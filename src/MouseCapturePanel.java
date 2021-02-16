@@ -174,7 +174,7 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
                             │ Version              %8s                         │          
                             │                                                       │
                             │ Made with love by BitDani                             │          
-                            │ github.com/repo/hamsterwheel                          │                           
+                            │ github.com/szabodanika/HamsterWheel                   │                           
                             └───────────────────────────────────────────────────────┘  
                                               
                             ┌─┤ STATISTICS ├────────────────────────────────────────┐                                           
