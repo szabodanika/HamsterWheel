@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MouseCapturePanel extends JPanel implements KeyListener {
+
+    private static final long NANOS_TO_STATIONARY = 1000000000;
+
     private MouseLocator mouseLocator;
     private Point position;
     private Color cursorColor = Color.RED,
@@ -21,12 +24,16 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
     private List<Point> prevPositions = new ArrayList<>();
     private int pollrate, fps, repaintCounter = 0, maxFps = 120, UIMultiplier = 4,
             maxPollingRate = 0, pollingRateClass = 0, avgPollingRate = 0, longestJump = 0, shortestJump = Integer.MAX_VALUE,
-            rgbCycle = 0;
+            rgbCycle = 0, currentAcceleration = 0, highestAcceleration = 0, lastJump;
     private ArrayList<Integer> last5pollingRates = new ArrayList<>();
     private Robot robot = new Robot();
-    private boolean lockCursor = false, darkMode = true, drawTrail = false, drawCoordinates = false, drawInchGrid = false, drawPixelGrid = false, showUI = true, drawRGB = false;
+    private boolean lockCursor = false, darkMode = true, drawTrail = false, drawCoordinates = false, drawInchGrid = false,
+            drawPixelGrid = false, showUI = true, drawRGB = false, stationary = true;
     private List<String> messages = new ArrayList<>();
-
+    private long lastTimeMoved = System.nanoTime();
+    private long lastTimeStationary = System.nanoTime();
+    private List<Integer> buttonsPressed = new ArrayList<>();
+    float dt;
 
     public MouseCapturePanel() throws AWTException {
         this.setFocusable(true);
@@ -36,6 +43,7 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
         startPaintFrequencyCounterThread();
         startPainterThread();
         startRGBThread();
+        startStationaryTimer();
 
         mouseLocator = new MouseLocator(
                 position -> {
@@ -44,7 +52,9 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
                     this.prevPositions.add(this.position);
                     if (prevPositions.size() > 1000) prevPositions.remove(0);
                     if (lockCursor) robot.mouseMove(this.getWidth() / 2, this.getHeight() / 2);
+                    lastTimeMoved = System.nanoTime();
                     calculateJump(position);
+                    calculateAcceleration(position);
                 },
                 mouseUpdateFrequency -> {
                     this.pollrate = mouseUpdateFrequency;
@@ -55,18 +65,49 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
         mouseLocator.start();
     }
 
+    private void startStationaryTimer() {
+        new Thread(() -> {
+            while (!Thread.interrupted()) {
+                if (System.nanoTime() - lastTimeMoved >= NANOS_TO_STATIONARY) {
+                    currentAcceleration = 0;
+                    stationary = true;
+                    lastTimeStationary = System.nanoTime();
+                } else {
+                    stationary = false;
+                }
+            }
+        }).start();
+    }
+
+    private void calculateAcceleration(Point position) {
+        // TODO: need to rework this
+
+        if (prevPositions.size() > 2) {
+            Point lastPosition = this.prevPositions.get(this.prevPositions.size() - 2);
+            float dx = Math.abs(position.x - lastPosition.x);
+            float dy = Math.abs(position.y - lastPosition.y);
+            int currentspeed = pollingRateClass * (int) Math.sqrt(dx * dx + dy * dy);
+            dt = System.nanoTime() - lastTimeStationary;
+            // don't bother calculating acceleration for the first 20ms of movement
+            if (dt > 20000000) {
+                currentAcceleration = (int) (currentspeed / dt * 1000000000);
+                // don't check against highest accelaration if it's under 5000pxpss
+                if (currentAcceleration > 5000) {
+                    if (currentAcceleration > highestAcceleration) highestAcceleration = currentAcceleration;
+                }
+            } else currentAcceleration = 0;
+        }
+    }
+
     private void calculateJump(Point position) {
         if (prevPositions.size() > 2) {
             Point lastPosition = this.prevPositions.get(this.prevPositions.size() - 2);
             float dx = Math.abs(position.x - lastPosition.x);
             float dy = Math.abs(position.y - lastPosition.y);
             int dist = (int) Math.sqrt(dx * dx + dy * dy);
-            if (dist > longestJump) {
-                longestJump = dist;
-            }
-            if (dist < shortestJump) {
-                shortestJump = dist;
-            }
+            lastJump = dist;
+            if (dist > longestJump) longestJump = dist;
+            if (dist < shortestJump) shortestJump = dist;
         }
     }
 
@@ -76,10 +117,8 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
 
         while (true) {
             if (mouseUpdateFrequency < pollRateClassLimit) {
-                if (pollRateClass > this.pollingRateClass) {
-                    this.pollingRateClass = pollRateClass;
-                }
-                break;
+                if (pollRateClass > this.pollingRateClass) this.pollingRateClass = pollRateClass;
+                else break;
             } else {
                 pollRateClassLimit *= 2;
                 pollRateClass *= 2;
@@ -114,7 +153,7 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
     private void startRGBThread() {
         new Thread(() -> {
             while (!Thread.interrupted()) {
-                if(rgbCycle == 99) rgbCycle = 0;
+                if (rgbCycle == 99) rgbCycle = 0;
                 else rgbCycle++;
                 try {
                     Thread.sleep(100);
@@ -143,12 +182,17 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                cursorColor = Color.BLUE;
+                buttonsPressed.add(e.getButton());
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                cursorColor = Color.RED;
+                for (int i = 0; i < buttonsPressed.size(); i++) {
+                    if (buttonsPressed.get(i) == e.getButton()) {
+                        buttonsPressed.remove(i);
+                        return;
+                    }
+                }
             }
         });
     }
@@ -167,81 +211,64 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
     }
 
     private void paintStats(Graphics2D g2d) {
-        if (showUI) {
-            printText(g2d, 50, 50, textColor,
-                    """                 
-                            ┌─┤ HAMSTER WHEEL ├─────────────────────────────────────┐    
-                            │ Version              %8s                         │          
-                            │                                                       │
-                            │ Made with love by BitDani                             │          
-                            │ github.com/szabodanika/HamsterWheel                   │                           
-                            └───────────────────────────────────────────────────────┘  
-                                              
-                            ┌─┤ STATISTICS ├────────────────────────────────────────┐                                           
-                            │ Position             %8d px     %8d px      │                               
-                            │                                                       │                     
-                            │ Polling rate         %8d Hz                      │                           
-                            │ Polling rate MAX     %8d Hz                      │                           
-                            │ Polling rate AVG     %8d Hz                      │                           
-                            │ Polling rate class   %8d Hz                      │                           
-                            │                                                       │                           
-                            │ Longest jump dist.   %8d px     %8.4f inch    │                           
-                            │ Shortest jump dist.  %8d px     %8.4f inch    │                           
-                            │ Fastest movement     %8d px/s   %8.4f inch/s  │                           
-                            │ Fastest acc.         %8d px/s2  %8.4f g       │                           
-                            │                                                       │                  
-                            │ Graphics FPS         %8d FPS                     │                           
-                            └───────────────────────────────────────────────────────┘    
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("""                 
+                ┌─┤ HAMSTER WHEEL ├─────────────────────────────────────┐    
+                │ Version              %8s                         │          
+                │                                                       │
+                │ Made with love by BitDani                             │          
+                │ github.com/szabodanika/HamsterWheel                   │                           
+                └───────────────────────────────────────────────────────┘  
                                             
-                            ┌─┤ INSTRUCTIONS ├──────────────────────────────────────┐                                           
-                            │ Lock cursor                   L       %8s        │                           
-                            │ Dark mode                     D       %8s        │                           
-                            │ FPS limit                     F       %8s        │                               
-                            │ Polling rate multiplier       M       %8s        │                               
-                            │ Draw trail                    T       %8s        │                           
-                            │ Draw coordinates              C       %8s        │                           
-                            │ Cycle UI size                 U       %8s        │                           
-                            │ DPI                           ↑ ↓     %8s        │                           
-                            │ Draw  250px grid              P       %8s        │                           
-                            │ Draw 1 inch grid              I       %8s        │  
-                            │ RGB                           G       %8s        │                           
-                            │                                                       │                         
-                            │ Hide/show UI                  H                       │                           
-                            │ Reset settings                S                       │                           
-                            │ Reset stats                   R                       │                           
-                            │ Exit                          ESC                     │    
-                            └───────────────────────────────────────────────────────┘
-                                                    
-                            %s
-                            """.formatted(
-                            Controller.VERSION,
-                            position.x,
-                            position.y,
-                            pollrate,
-                            maxPollingRate,
-                            avgPollingRate,
-                            pollingRateClass,
-                            longestJump,
-                            (float) longestJump / (float) mouseLocator.getDpi(),
-                            shortestJump == Integer.MAX_VALUE ? 0 : shortestJump,
-                            (float) (shortestJump == Integer.MAX_VALUE ? 0 : shortestJump) / (float) mouseLocator.getDpi(),
-                            pollingRateClass * longestJump,
-                            pollingRateClass * longestJump / (float) mouseLocator.getDpi(),
-                            0,
-                            0f,
-                            fps,
-                            lockCursor,
-                            darkMode,
-                            maxFps,
-                            "1/" + mouseLocator.getPollrateDivisor(),
-                            drawTrail,
-                            drawCoordinates,
-                            UIMultiplier,
-                            mouseLocator.getDpi(),
-                            drawPixelGrid,
-                            drawInchGrid,
-                            drawRGB,
-                            lockCursor ? "Unlock cursor for accurate poll rate readings" : ""));
+                """.formatted(Controller.VERSION));
+        stringBuilder.append("┌─┤ STATISTICS ├────────────────────────────────────────┐\n");
+        stringBuilder.append("│ Position             %8d px     %8d px      │\n".formatted(position.x, position.y));
+        stringBuilder.append("│                                                       │\n");
+        stringBuilder.append("│ Polling rate         %8d Hz                      │\n".formatted(pollingRateClass));
+        stringBuilder.append("│ Polling rate MAX     %8d Hz                      │\n".formatted(maxPollingRate));
+        stringBuilder.append("│ Polling rate AVG     %8d Hz                      │\n".formatted(avgPollingRate));
+        stringBuilder.append("│ Polling rate class   %8d Hz                      │\n".formatted(pollingRateClass));
+        stringBuilder.append("│                                                       │\n");
+        stringBuilder.append("│ Longest jump dist.   %8d px     %8.4f inch    │\n".formatted(longestJump, (float) longestJump / mouseLocator.getDpi()));
+        stringBuilder.append("│ Shortest jump dist.  %8d px     %8.4f inch    │\n".formatted(shortestJump == Integer.MAX_VALUE ? 0 : shortestJump, (float) (shortestJump == Integer.MAX_VALUE ? 0 : shortestJump) / mouseLocator.getDpi()));
+        stringBuilder.append("│ Movement speed       %8d px/s   %8.4f inch/s  │\n".formatted(lastJump * longestJump, (float) pollingRateClass * lastJump / mouseLocator.getDpi()));
+        stringBuilder.append("│ Fastest movement     %8d px/s   %8.4f inch/s  │\n".formatted(pollingRateClass * longestJump, (float) pollingRateClass * longestJump / mouseLocator.getDpi()));
+        stringBuilder.append("│ Acceleration         %8d px/s2  %8.4f g       │\n".formatted(currentAcceleration, ((float) currentAcceleration / mouseLocator.getDpi()) * 0.0025900792));
+        stringBuilder.append("│ Fastest acceleration %8d px/s2  %8.4f g       │\n".formatted(highestAcceleration, ((float) highestAcceleration / mouseLocator.getDpi() * 0.0025900792)));
+        stringBuilder.append("│                                                       │\n");
+        stringBuilder.append("│ Graphics FPS         %8d FPS                     │\n".formatted(fps));
+        stringBuilder.append("└───────────────────────────────────────────────────────┘\n");
+        stringBuilder.append("\n");
+        stringBuilder.append("┌─┤ INSTRUCTIONS ├──────────────────────────────────────┐\n");
+        stringBuilder.append("│ Lock cursor                   L       %8s        │\n".formatted(lockCursor));
+        stringBuilder.append("│ Dark mode                     D       %8s        │\n".formatted(darkMode));
+        stringBuilder.append("│ FPS limit                     F       %8s        │\n".formatted(maxFps));
+        stringBuilder.append("│ Polling rate multiplier       M       %8s        │\n".formatted("1/" + mouseLocator.getPollrateDivisor()));
+        stringBuilder.append("│ Draw trail                    T       %8s        │\n".formatted(drawTrail));
+        stringBuilder.append("│ Draw coordinates              C       %8s        │\n".formatted(drawCoordinates));
+        stringBuilder.append("│ Cycle UI size                 U       %8s        │\n".formatted(UIMultiplier));
+        stringBuilder.append("│ DPI                           ↑ ↓     %8s        │\n".formatted(mouseLocator.getDpi()));
+        stringBuilder.append("│ Draw  250px grid              P       %8s        │\n".formatted(drawPixelGrid));
+        stringBuilder.append("│ Draw 1 inch grid              I       %8s        │\n".formatted(drawInchGrid));
+        stringBuilder.append("│ RGB                           G       %8s        │\n".formatted(drawRGB));
+        stringBuilder.append("│                                                       │\n");
+        stringBuilder.append("│ Hide/show UI                  H                       │\n");
+        stringBuilder.append("│ Reset settings                S                       │\n");
+        stringBuilder.append("│ Reset stats                   R                       │\n");
+        stringBuilder.append("│ Exit                          ESC                     │\n");
+        stringBuilder.append("└───────────────────────────────────────────────────────┘\n");
+        stringBuilder.append("\nRemember to turn off mouse acceleration/precision enhancements");
+        stringBuilder.append("\n");
+        if (lockCursor) stringBuilder.append("\nUnlock cursor for accurate poll rate readings\n");
+        if (stationary) stringBuilder.append("\nStationary\n");
+
+        stringBuilder.append("\n\n" + dt);
+        for (int i = 0; i < buttonsPressed.size(); i++) {
+            stringBuilder.append("\nButton %d pressed".formatted(buttonsPressed.get(i)));
+        }
+
+        if (showUI) {
+            printText(g2d, 50, 50, textColor, stringBuilder.toString());
         } else {
             printText(g2d, 50, 50, textColor, "Hide/show UI   H");
         }
@@ -260,7 +287,8 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
             if (line.trim().length() != 0) {
                 attributedString.addAttribute(TextAttribute.BACKGROUND, new Color(127, 127, 127, 255));
                 attributedString.addAttribute(TextAttribute.FONT, new Font("Courier New", Font.PLAIN, 4 * UIMultiplier));
-                if(drawRGB) attributedString.addAttribute(TextAttribute.FOREGROUND, new Color(Color.HSBtoRGB((float)i/string.split("\n").length + rgbCycle/100f, 1, 1)));
+                if (drawRGB)
+                    attributedString.addAttribute(TextAttribute.FOREGROUND, new Color(Color.HSBtoRGB((float) i / string.split("\n").length + rgbCycle / 100f, 1, 1)));
             }
 
             g2d.drawString(attributedString.getIterator(), x, y + lineHeight * i);
@@ -313,9 +341,9 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
 
     private void paintRGB(Graphics2D graphics2D) {
         for (int i = -5; i < getWidth(); i += 5) {
-            graphics2D.setColor(new Color(Color.HSBtoRGB((i/(float)getWidth() + rgbCycle/100f), 1, 1)));
+            graphics2D.setColor(new Color(Color.HSBtoRGB((i / (float) getWidth() + rgbCycle / 100f), 1, 1)));
             graphics2D.drawLine(i, 5, i + 5, 10);
-            graphics2D.drawLine(i, getHeight()-5, i + 5, getHeight()-10);
+            graphics2D.drawLine(i, getHeight() - 5, i + 5, getHeight() - 10);
         }
     }
 
@@ -377,6 +405,7 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
                 pollingRateClass = 0;
                 pollrate = 0;
                 longestJump = 0;
+                highestAcceleration = 0;
                 break;
             case KeyEvent.VK_I:
                 drawInchGrid = !drawInchGrid;

@@ -1,6 +1,6 @@
 public class Controller {
 
-    public static final String VERSION = "beta 0.1";
+    public static final String VERSION = "beta 0.2";
 
     public static void main(String[] args) {
 
