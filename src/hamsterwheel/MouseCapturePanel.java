@@ -1,3 +1,5 @@
+package hamsterwheel;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyEvent;
@@ -33,7 +35,6 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
     private long lastTimeMoved = System.nanoTime();
     private long lastTimeStationary = System.nanoTime();
     private List<Integer> buttonsPressed = new ArrayList<>();
-    float dt;
 
     public MouseCapturePanel() throws AWTException {
         this.setFocusable(true);
@@ -87,7 +88,7 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
             float dx = Math.abs(position.x - lastPosition.x);
             float dy = Math.abs(position.y - lastPosition.y);
             int currentspeed = pollingRateClass * (int) Math.sqrt(dx * dx + dy * dy);
-            dt = System.nanoTime() - lastTimeStationary;
+            float dt = System.nanoTime() - lastTimeStationary;
             // don't bother calculating acceleration for the first 20ms of movement
             if (dt > 20000000) {
                 currentAcceleration = (int) (currentspeed / dt * 1000000000);
@@ -233,8 +234,8 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
         stringBuilder.append("│ Shortest jump dist.  %8d px     %8.4f inch    │\n".formatted(shortestJump == Integer.MAX_VALUE ? 0 : shortestJump, (float) (shortestJump == Integer.MAX_VALUE ? 0 : shortestJump) / mouseLocator.getDpi()));
         stringBuilder.append("│ Movement speed       %8d px/s   %8.4f inch/s  │\n".formatted(lastJump * longestJump, (float) pollingRateClass * lastJump / mouseLocator.getDpi()));
         stringBuilder.append("│ Fastest movement     %8d px/s   %8.4f inch/s  │\n".formatted(pollingRateClass * longestJump, (float) pollingRateClass * longestJump / mouseLocator.getDpi()));
-        stringBuilder.append("│ Acceleration         %8d px/s2  %8.4f g       │\n".formatted(currentAcceleration, ((float) currentAcceleration / mouseLocator.getDpi()) * 0.0025900792));
-        stringBuilder.append("│ Fastest acceleration %8d px/s2  %8.4f g       │\n".formatted(highestAcceleration, ((float) highestAcceleration / mouseLocator.getDpi() * 0.0025900792)));
+        stringBuilder.append("│ Acceleration         %8d px/s2  %8.4f g       │\n".formatted(currentAcceleration, ((float) currentAcceleration / mouseLocator.getDpi()) * 0.025900792));
+        stringBuilder.append("│ Fastest acceleration %8d px/s2  %8.4f g       │\n".formatted(highestAcceleration, ((float) highestAcceleration / mouseLocator.getDpi() * 0.025900792)));
         stringBuilder.append("│                                                       │\n");
         stringBuilder.append("│ Graphics FPS         %8d FPS                     │\n".formatted(fps));
         stringBuilder.append("└───────────────────────────────────────────────────────┘\n");
@@ -262,7 +263,6 @@ public class MouseCapturePanel extends JPanel implements KeyListener {
         if (lockCursor) stringBuilder.append("\nUnlock cursor for accurate poll rate readings\n");
         if (stationary) stringBuilder.append("\nStationary\n");
 
-        stringBuilder.append("\n\n" + dt);
         for (int i = 0; i < buttonsPressed.size(); i++) {
             stringBuilder.append("\nButton %d pressed".formatted(buttonsPressed.get(i)));
         }

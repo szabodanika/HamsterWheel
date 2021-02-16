@@ -1,3 +1,5 @@
+package hamsterwheel;
+
 public class Controller {
 
     public static final String VERSION = "beta 0.2";

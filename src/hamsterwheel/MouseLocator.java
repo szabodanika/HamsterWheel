@@ -1,3 +1,5 @@
+package hamsterwheel;
+
 import java.awt.*;
 import java.util.function.Consumer;
 

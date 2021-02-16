@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch4jConfig>
+  <dontWrapJar>false</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>C:\Users\danie\IdeaProjects\HamsterWheel\out\artifacts\HamsterWheel_jar\HamsterWheel.jar</jar>
+  <outfile>C:\Users\danie\Documents\HamsterWheel.exe</outfile>
+  <errTitle></errTitle>
+  <cmdLine></cmdLine>
+  <chdir>.</chdir>
+  <priority>normal</priority>
+  <downloadUrl>http://java.com/download</downloadUrl>
+  <supportUrl></supportUrl>
+  <stayAlive>false</stayAlive>
+  <restartOnCrash>false</restartOnCrash>
+  <manifest></manifest>
+  <icon>C:\Users\danie\Downloads\download.ico</icon>
+  <jre>
+    <path>hamsterwheel-jre-runtime</path>
+    <bundledJre64Bit>false</bundledJre64Bit>
+    <bundledJreAsFallback>false</bundledJreAsFallback>
+    <minVersion></minVersion>
+    <maxVersion></maxVersion>
+    <jdkPreference>preferJre</jdkPreference>
+    <runtimeBits>64/32</runtimeBits>
+    <initialHeapPercent>25</initialHeapPercent>
+    <maxHeapPercent>25</maxHeapPercent>
+  </jre>
+  <versionInfo>
+    <fileVersion>0.1.0.0</fileVersion>
+    <txtFileVersion>0.1 Beta</txtFileVersion>
+    <fileDescription>HamsterWheel mouse benchmarker and tester</fileDescription>
+    <copyright>Daniel Szabo</copyright>
+    <productVersion>0.1.0.0</productVersion>
+    <txtProductVersion>1</txtProductVersion>
+    <productName>HamsterWheel mouse benchmarker and tester</productName>
+    <companyName></companyName>
+    <internalName>HamsterWheel mouse benchmarker and tester</internalName>
+    <originalFilename>HamsterWheel.exe</originalFilename>
+    <trademarks></trademarks>
+    <language>ENGLISH_UK</language>
+  </versionInfo>
+</launch4jConfig>
