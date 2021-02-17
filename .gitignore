@@ -1,4 +1,10 @@
 # Project exclude paths
 /out/
 .idea
+hamsterwheel-jre-runtime
+logs
+
 HamsterWheel.iml
+README.md
+screenshot1.jpg
+config.cfg
