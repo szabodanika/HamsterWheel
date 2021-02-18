@@ -13,23 +13,13 @@ public class Controller {
 
     public static Config config;
     public static MainFrame mainFrame;
-    public static MouseLocator mouseLocator;
+    public static hamsterwheel.core.MouseLocator mouseLocator;
 
     private static String configFilePath = "config.cfg";
 
     public static void main(String[] args) {
         Log.info("Starting HamsterWheel version %s.".formatted(VERSION));
 
-        for (int i = 0; i < args.length; i++) {
-            if(args[i].equals("-v")) {
-                System.out.println(VERSION);
-                return;
-            }
-            if(args[i].equals("-c")) {
-                configFilePath = args[i+1];
-                return;
-            }
-        }
         loadConfig();
         loadFrame();
         loadMouseLocator();
@@ -52,6 +42,7 @@ public class Controller {
     }
 
     private static void loadMouseLocator() {
+        Log.info("Starting mouse analyser thread...");
         mouseLocator = new MouseLocator(
                 mouseUpdate -> {
                     mainFrame.handleMouseUpdate(mouseUpdate);
@@ -62,6 +53,7 @@ public class Controller {
     }
 
     public static void loadFrame() {
+        Log.info("Loading GUI...");
         if(mainFrame != null){
             mainFrame.dispose();
         }

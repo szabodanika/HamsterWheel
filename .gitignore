@@ -1,10 +1,13 @@
 # Project exclude paths
 /out/
-.idea
-hamsterwheel-jre-runtime
-logs
+/.idea
+/hamsterwheel-jre-runtime
+/logs
+/target
+/HamsterWheel
 
 HamsterWheel.iml
 README.md
 screenshot1.jpg
 config.cfg
+HamsterWheel.zip

@@ -1,6 +1,5 @@
 package hamsterwheel.core;
 
-import javax.swing.plaf.TableHeaderUI;
 import java.awt.*;
 import java.util.function.Consumer;
 

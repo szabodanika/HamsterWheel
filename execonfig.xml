@@ -2,8 +2,8 @@
 <launch4jConfig>
   <dontWrapJar>false</dontWrapJar>
   <headerType>gui</headerType>
-  <jar>C:\Users\danie\IdeaProjects\HamsterWheel\out\artifacts\HamsterWheel_jar\HamsterWheel.jar</jar>
-  <outfile>C:\Users\danie\Documents\HamsterWheel.exe</outfile>
+  <jar>C:\Users\danie\IdeaProjects\HamsterWheel\target\hamsterwheel-0.3.0-jar-with-dependencies.jar</jar>
+  <outfile>C:\Users\danie\IdeaProjects\HamsterWheel\MouseWheel.exe</outfile>
   <errTitle></errTitle>
   <cmdLine></cmdLine>
   <chdir>.</chdir>
@@ -13,7 +13,7 @@
   <stayAlive>false</stayAlive>
   <restartOnCrash>false</restartOnCrash>
   <manifest></manifest>
-  <icon>C:\Users\danie\Downloads\download.ico</icon>
+  <icon>C:\Users\danie\IdeaProjects\HamsterWheel\icon.ico</icon>
   <jre>
     <path>hamsterwheel-jre-runtime</path>
     <bundledJre64Bit>false</bundledJre64Bit>
@@ -26,12 +26,12 @@
     <maxHeapPercent>25</maxHeapPercent>
   </jre>
   <versionInfo>
-    <fileVersion>0.1.0.0</fileVersion>
-    <txtFileVersion>0.1 Beta</txtFileVersion>
+    <fileVersion>0.3.0.0</fileVersion>
+    <txtFileVersion>0.3 Beta</txtFileVersion>
     <fileDescription>HamsterWheel mouse benchmarker and tester</fileDescription>
     <copyright>Daniel Szabo</copyright>
-    <productVersion>0.1.0.0</productVersion>
-    <txtProductVersion>1</txtProductVersion>
+    <productVersion>0.3.0.0</productVersion>
+    <txtProductVersion>3</txtProductVersion>
     <productName>HamsterWheel mouse benchmarker and tester</productName>
     <companyName></companyName>
     <internalName>HamsterWheel mouse benchmarker and tester</internalName>
