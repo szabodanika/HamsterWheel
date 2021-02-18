@@ -34,17 +34,17 @@ I make it just for fun and to compare my own mice but you can use it for anythin
 
 ## Building the executable for yourself
 
-###1. Build executable jar with dependencies using Maven
+### 1. Build executable jar with dependencies using Maven
 ```
 mvn clean install
 ```
 
-###2. Generate custom JRE using jlink (optional, a full fat JDK can be used too)
+### 2. Generate custom JRE using jlink (optional, a full fat JDK can be used too)
 ```
 jlink --output hamsterwheel-jre-runtime --add-modules java.desktop
 ```
 
-###3. Create native windows executable
+### 3. Create native windows executable
 1. On windows you can use launch4j for this, just load the execonfig.xml
 2. Generate executable
 3. Place executable in a new empty folder called "HamsterWheel"
