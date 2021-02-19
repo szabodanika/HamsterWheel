@@ -14,6 +14,8 @@ I created HamsterWheel just for fun so I can benchmark my own mice but feel free
 - Skipping, jumping testing
 - Cursor tracking
 - Generating statistics in a log file
+- Relative click latency test
+- Click duration and interval test
 - Full screen and windowed mode
 - Polling rate multiplier for testing different polling rates
 - Saving settings in local config file
