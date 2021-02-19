@@ -56,14 +56,17 @@ public class Log {
     }
 
     public static void log(String file, Object o, boolean log, boolean writeToFile) {
+        String s = String.valueOf(o);
         if (log) {
-            String s = "[%s] ".formatted(logDateFormat.format(new Date())) + o.toString();
+            s = "[%s] ".formatted(logDateFormat.format(new Date())) + s;
             for (Consumer<String> logConsumer : logConsumers) logConsumer.accept(s);
-        } else for (Consumer<String> statConsumer : statConsumers) statConsumer.accept(String.valueOf(o));
+        } else for (Consumer<String> statConsumer : statConsumers) {
+            statConsumer.accept(s);
+        }
 
         if (writeToFile) {
             try {
-                IO.writeToFile("logs/" + file + fileDateFormat.format(sessionStart) + ".log", false, o);
+                IO.writeToFile("logs/" + file + fileDateFormat.format(sessionStart) + ".log", false, s);
             } catch (IOException e) {
                 try {
                     Files.createDirectories(Path.of("logs/"));
