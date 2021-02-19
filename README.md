@@ -1,8 +1,8 @@
 # HamsterWheel
 
-Mouse tester and benchmark tool
+HamsterWheel is a mouse sensor test and benchmark tool. Use it to test the performance of your mouse sensor or buttons and the speed of your movements.
 
-I make it just for fun and to compare my own mice but you can use it for anything
+I created HamsterWheel just for fun so I can benchmark my own mice but feel free to use it for anything and fork it if you would like.
 
 ![alt text](https://github.com/szabodanika/HamsterWheel/blob/master/screenshot1.jpg?raw=true[/img])
 
