@@ -6,7 +6,8 @@ import java.lang.reflect.Field;
 
 public class Config {
     private boolean fullScreen, darkMode, drawTrail,
-            drawCoordinates, drawInchGrid, drawPixelGrid, showUI, drawRGB, enableStatisticsLogging;
+            drawCoordinates, drawInchGrid, drawPixelGrid, drawRGB, enableStatisticsLogging,
+            showTitlePanel, showStatsPanel, showSettingsPanel, showDebugPanel, showPollingPanel;
     private int maxFPS, UIMultiplier, pollrateDivisor, dpi;
 
     public Config() {
@@ -59,7 +60,12 @@ public class Config {
         pollrateDivisor = 1;
         dpi = 1600;
         enableStatisticsLogging = false;
-        showUI = true;
+        showTitlePanel = true;
+        showStatsPanel = true;
+        showSettingsPanel = true;
+        showDebugPanel = false;
+        showPollingPanel = false;
+        drawRGB = false;
     }
 
     public boolean isFullScreen() {
@@ -110,12 +116,44 @@ public class Config {
         this.drawPixelGrid = drawPixelGrid;
     }
 
-    public boolean isShowUI() {
-        return showUI;
+    public boolean isShowTitlePanel() {
+        return showTitlePanel;
     }
 
-    public void setShowUI(boolean showUI) {
-        this.showUI = showUI;
+    public void setShowTitlePanel(boolean showTitlePanel) {
+        this.showTitlePanel = showTitlePanel;
+    }
+
+    public boolean isShowStatsPanel() {
+        return showStatsPanel;
+    }
+
+    public void setShowStatsPanel(boolean showStatsPanel) {
+        this.showStatsPanel = showStatsPanel;
+    }
+
+    public boolean isShowSettingsPanel() {
+        return showSettingsPanel;
+    }
+
+    public void setShowSettingsPanel(boolean showSettingsPanel) {
+        this.showSettingsPanel = showSettingsPanel;
+    }
+
+    public boolean isShowDebugPanel() {
+        return showDebugPanel;
+    }
+
+    public void setShowDebugPanel(boolean showDebugPanel) {
+        this.showDebugPanel = showDebugPanel;
+    }
+
+    public boolean isShowPollingPanel() {
+        return showPollingPanel;
+    }
+
+    public void setShowPollingPanel(boolean showPollingPanel) {
+        this.showPollingPanel = showPollingPanel;
     }
 
     public boolean isDrawRGB() {
@@ -165,4 +203,5 @@ public class Config {
     public void setEnableStatisticsLogging(boolean enableStatisticsLogging) {
         this.enableStatisticsLogging = enableStatisticsLogging;
     }
+
 }

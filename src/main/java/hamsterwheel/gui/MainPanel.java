@@ -1,40 +1,52 @@
 package hamsterwheel.gui;
 
+import hamsterwheel.config.Config;
 import hamsterwheel.core.Controller;
+import hamsterwheel.core.MouseLocator;
 import hamsterwheel.core.MouseUpdate;
+import hamsterwheel.util.Log;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import java.awt.event.*;
 import java.awt.font.TextAttribute;
 import java.text.AttributedString;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class MainPanel extends JPanel implements KeyListener {
 
     private static final long NANOS_TO_STATIONARY = 1000000000;
+    private static final int COORDINATE_BACKLOG_LENGTH = 1000;
 
-    private Point position = new Point();
+    private Config config;
+    private MouseLocator mouseLocator;
+
+    private MouseUpdate latestUpdate = new MouseUpdate();
     private Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+    private int lineHeight;
 
-    private Color cursorColor = Color.RED,cursorButtonPressedColor = Color.BLUE, coordinateColor = Color.GREEN,
-            inchGridColor = Color.decode("#b33d8b"), pixelGridColor = Color.decode("#545fa8"), textColor = Color.WHITE;
+    private Color cursorColor = Color.RED, cursorButtonPressedColor = Color.BLUE, coordinateColor = Color.decode("#db50eb"), coordinateButtonPressedColor = Color.BLUE,
+            inchGridColor = Color.decode("#b33d8b"), pixelGridColor = Color.decode("#545fa8"), textColor = Color.BLACK, darkModeTextColor = Color.WHITE;
     private boolean stationary = true;
     private int pollingRate, fps, repaintCounter = 0, maxPollingRate = 0, pollingRateClass = 0, avgPollingRate = 0, longestJump = 0, shortestJump = Integer.MAX_VALUE,
             rgbCycle = 0, currentAcceleration = 0, highestAcceleration = 0, lastJump;
     private long lastTimeMoved = System.nanoTime(), lastTimeStationary = System.nanoTime();
 
-    private ArrayList<Integer> last5pollingRates = new ArrayList<>();
-    private List<Point> prevPositions = new ArrayList<>();
-    private List<Integer> buttonsPressed = new ArrayList<>();
+    private List<Integer> last5pollingRates = new ArrayList<Integer>();
 
-    public MainPanel() throws AWTException {
+    private List<String> statsLogs = Collections.synchronizedList(new ArrayList<>());
+    private List<String> debugLogs = Collections.synchronizedList(new ArrayList<>());
+
+
+    public MainPanel(MouseLocator mouseLocator, MouseListener mouseListener, Config config) throws AWTException {
+        setVisible(true);
+        this.config = config;
+        this.mouseLocator = mouseLocator;
+        lineHeight = (int) (4.5 * config.getUIMultiplier());
         this.setFocusable(true);
-        addMouseListener();
+        addMouseListener(mouseListener);
         startPaintFrequencyCounterThread();
         startPainterThread();
         startRGBThread();
@@ -42,18 +54,17 @@ public class MainPanel extends JPanel implements KeyListener {
     }
 
     public void handlePosition(MouseUpdate mouseUpdate) {
-        this.position = mouseUpdate.getPosition();
-
-        this.prevPositions.add(this.position);
-        if (prevPositions.size() > 1000) prevPositions.remove(0);
+        latestUpdate = mouseUpdate;
         lastTimeMoved = System.nanoTime();
-        calculateJump(position);
-        calculateAcceleration(position);
-
+        if (mouseUpdate.getPrevious() != null)
+            calculateJump(mouseUpdate.getPosition(), mouseUpdate.getPrevious().getPosition());
+        if (mouseUpdate.getPrevious() != null)
+            calculateAcceleration(mouseUpdate.getPosition(), mouseUpdate.getPrevious().getPosition());
         this.pollingRate = mouseUpdate.getPollingRate();
         if (pollingRate > maxPollingRate) maxPollingRate = pollingRate;
         calculateAveragePollingRate(pollingRate);
         calculatePollingRateClass(pollingRate);
+
     }
 
     private void startStationaryTimer() {
@@ -70,36 +81,30 @@ public class MainPanel extends JPanel implements KeyListener {
         }).start();
     }
 
-    private void calculateAcceleration(Point position) {
+    private void calculateAcceleration(Point lastPos, Point prevPos) {
         // TODO: need to rework this
 
-        if (prevPositions.size() > 2) {
-            Point lastPosition = this.prevPositions.get(this.prevPositions.size() - 2);
-            float dx = Math.abs(position.x - lastPosition.x);
-            float dy = Math.abs(position.y - lastPosition.y);
-            int currentspeed = pollingRateClass * (int) Math.sqrt(dx * dx + dy * dy);
-            float dt = System.nanoTime() - lastTimeStationary;
-            // don't bother calculating acceleration for the first 20ms of movement
-            if (dt > 20000000) {
-                currentAcceleration = (int) (currentspeed / dt * 1000000000);
-                // don't check against highest accelaration if it's under 5000pxpss
-                if (currentAcceleration > 5000) {
-                    if (currentAcceleration > highestAcceleration) highestAcceleration = currentAcceleration;
-                }
-            } else currentAcceleration = 0;
-        }
+        float dx = Math.abs(lastPos.x - prevPos.x);
+        float dy = Math.abs(lastPos.y - prevPos.y);
+        int currentspeed = pollingRateClass * (int) Math.sqrt(dx * dx + dy * dy);
+        float dt = System.nanoTime() - lastTimeStationary;
+        // don't bother calculating acceleration for the first 20ms of movement
+        if (dt > 20000000) {
+            currentAcceleration = (int) (currentspeed / dt * 1000000000);
+            // don't check against highest accelaration if it's under 5000pxpss
+            if (currentAcceleration > 5000) {
+                if (currentAcceleration > highestAcceleration) highestAcceleration = currentAcceleration;
+            }
+        } else currentAcceleration = 0;
     }
 
-    private void calculateJump(Point position) {
-        if (prevPositions.size() > 2) {
-            Point lastPosition = this.prevPositions.get(this.prevPositions.size() - 2);
-            float dx = Math.abs(position.x - lastPosition.x);
-            float dy = Math.abs(position.y - lastPosition.y);
-            int dist = (int) Math.sqrt(dx * dx + dy * dy);
-            lastJump = dist;
-            if (dist > longestJump) longestJump = dist;
-            if (dist < shortestJump) shortestJump = dist;
-        }
+    private void calculateJump(Point lastPos, Point prevPos) {
+        float dx = Math.abs(lastPos.x - prevPos.x);
+        float dy = Math.abs(lastPos.y - prevPos.y);
+        int dist = (int) Math.sqrt(dx * dx + dy * dy);
+        lastJump = dist;
+        if (dist > longestJump) longestJump = dist;
+        if (dist < shortestJump) shortestJump = dist;
     }
 
     private void calculatePollingRateClass(Integer mouseUpdateFrequency) {
@@ -133,7 +138,7 @@ public class MainPanel extends JPanel implements KeyListener {
                 repaintCounter++;
                 this.repaint();
                 try {
-                    Thread.sleep(1000 / Controller.config.getMaxFPS());
+                    Thread.sleep(1000 / config.getMaxFPS());
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -169,111 +174,150 @@ public class MainPanel extends JPanel implements KeyListener {
         }).start();
     }
 
-    private void addMouseListener() {
-        addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                buttonsPressed.add(e.getButton());
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                for (int i = 0; i < buttonsPressed.size(); i++) {
-                    if (buttonsPressed.get(i) == e.getButton()) {
-                        buttonsPressed.remove(i);
-                        return;
-                    }
-                }
-            }
-        });
-    }
-
     @Override
     public void paint(Graphics g) {
         super.paint(g);
         Graphics2D g2d = (Graphics2D) g;
-        if (Controller.config.isDarkMode()) {
-            this.setBackground(Color.BLACK);
+        if (config.isDarkMode()) {
+            g2d.setColor(Color.BLACK);
         } else {
-            this.setBackground(Color.WHITE);
+            g2d.setColor(Color.WHITE);
         }
-
-        if (Controller.config.isDrawPixelGrid()) paintPixelGrid(g2d);
-        if (Controller.config.isDrawInchGrid()) paintInchGrid(g2d);
-        if (Controller.config.isDrawTrail()) paintPath(g2d);
-        if (Controller.config.isDrawCoordinates()) paintCoordinates(g2d);
-        if (Controller.config.isDrawRGB()) paintRGB(g2d);
-        paintCursor(g2d);
-        paintStats(g2d);
+        g2d.fillRect(0, 0, getWidth(), getHeight());
+        if (config.isDrawPixelGrid()) paintPixelGrid(g2d);
+        if (config.isDrawInchGrid()) paintInchGrid(g2d);
+        if (config.isDrawTrail()) paintPath(g2d);
+        if (config.isDrawCoordinates()) paintCoordinates(g2d);
+        if (config.isDrawRGB()) paintRGB(g2d);
+        if (latestUpdate != null) paintCursor(g2d);
+        paintUI(g2d);
     }
 
-    private void paintStats(Graphics2D g2d) {
+    public void addDebugLog(String s) {
+        this.debugLogs.add(0, s);
+        if (config.isShowPollingPanel()) {
+            while (debugLogs.size() > (this.getHeight() * 0.25 / lineHeight) - 6 && !debugLogs.isEmpty())
+                debugLogs.remove(debugLogs.size() - 1);
+        } else {
+            while (debugLogs.size() > (this.getHeight() / lineHeight) - 6 && !debugLogs.isEmpty())
+                debugLogs.remove(debugLogs.size() - 1);
+        }
+    }
+
+    public void addStatsLog(String s) {
+        this.statsLogs.add(0, s);
+
+        if (config.isShowDebugPanel()) {
+            while (statsLogs.size() > (this.getHeight() * 0.75 / lineHeight) - 4 && !statsLogs.isEmpty())
+                statsLogs.remove(statsLogs.size() - 1);
+        } else {
+            while (statsLogs.size() > (this.getHeight() / lineHeight) - 8 && !statsLogs.isEmpty())
+                statsLogs.remove(statsLogs.size() - 1);
+        }
+    }
+
+    private void paintUI(Graphics2D g2d) {
         StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder.append("""                 
-                ┌── HAMSTER WHEEL ──────────────────────────────────────┐    
-                │ Version              %8s                         │          
-                │                                                       │
-                │ Made with love by BitDani                             │          
-                │ github.com/szabodanika/HamsterWheel                   │                           
-                └───────────────────────────────────────────────────────┘  
-                                            
-                """.formatted(Controller.VERSION));
-        stringBuilder.append("┌── STATISTICS ─────────────────────────────────────────┐\n");
-        stringBuilder.append("│ Position             %8d px     %8d px      │\n".formatted(position.x, position.y));
-        stringBuilder.append("│                                                       │\n");
-        stringBuilder.append("│ Polling rate         %8d Hz                      │\n".formatted(pollingRate));
-        stringBuilder.append("│ Polling rate MAX     %8d Hz                      │\n".formatted(maxPollingRate));
-        stringBuilder.append("│ Polling rate AVG     %8d Hz                      │\n".formatted(avgPollingRate));
-        stringBuilder.append("│ Polling rate class   %8d Hz                      │\n".formatted(pollingRateClass));
-        stringBuilder.append("│                                                       │\n");
-        stringBuilder.append("│ Longest jump dist.   %8d px     %8.4f inch    │\n".formatted(longestJump, (float) longestJump / Controller.config.getDpi()));
-        stringBuilder.append("│ Shortest jump dist.  %8d px     %8.4f inch    │\n".formatted(shortestJump == Integer.MAX_VALUE ? 0 : shortestJump, (float) (shortestJump == Integer.MAX_VALUE ? 0 : shortestJump) / Controller.config.getDpi()));
-        stringBuilder.append("│ Movement speed       %8d px/s   %8.4f inch/s  │\n".formatted(lastJump * longestJump, (float) pollingRateClass * lastJump / Controller.config.getDpi()));
-        stringBuilder.append("│ Fastest movement     %8d px/s   %8.4f inch/s  │\n".formatted(pollingRateClass * longestJump, (float) pollingRateClass * longestJump / Controller.config.getDpi()));
-        stringBuilder.append("│ Acceleration         %8d px/s2  %8.4f g       │\n".formatted(currentAcceleration, ((float) currentAcceleration / Controller.config.getDpi()) * 0.025900792));
-        stringBuilder.append("│ Fastest acceleration %8d px/s2  %8.4f g       │\n".formatted(highestAcceleration, ((float) highestAcceleration / Controller.config.getDpi() * 0.025900792)));
-        stringBuilder.append("│                                                       │\n");
-        stringBuilder.append("│ Graphics FPS         %8d FPS                     │\n".formatted(fps));
+        stringBuilder.append("┌── HAMSTER WHEEL   F1 ─────────────────────────────────┐\n");
+        if (config.isShowTitlePanel()) {
+            stringBuilder.append("│ Version              %8s                         │\n".formatted(Controller.VERSION));
+            stringBuilder.append("│                                                       │\n");
+            stringBuilder.append("│ Made with love by BitDani                             │\n");
+            stringBuilder.append("│ github.com/szabodanika/HamsterWheel                   │\n");
+        }
         stringBuilder.append("└───────────────────────────────────────────────────────┘\n");
         stringBuilder.append("\n");
-        stringBuilder.append("┌── INSTRUCTIONS ───────────────────────────────────────┐\n");
-        stringBuilder.append("│ Pause                       SPACE     %8s        │\n".formatted(Controller.mouseLocator.isPaused()));
-        stringBuilder.append("│ Draw trail                    T       %8s        │\n".formatted(Controller.config.isDrawTrail()));
-        stringBuilder.append("│ Draw coordinates              C       %8s        │\n".formatted(Controller.config.isDrawCoordinates()));
-        stringBuilder.append("│ Polling rate multiplier       M       %8s        │\n".formatted("1/" + Controller.config.getPollrateDivisor()));
-        stringBuilder.append("│ DPI                           ↑ ↓     %8s        │\n".formatted(Controller.config.getDpi()));
-        stringBuilder.append("│ Dark mode                     D       %8s        │\n".formatted(Controller.config.isDarkMode()));
-        stringBuilder.append("│ FPS limit                     F       %8s        │\n".formatted(Controller.config.getMaxFPS()));
-        stringBuilder.append("│ Cycle UI size                 U       %8s        │\n".formatted(Controller.config.getUIMultiplier()));
-        stringBuilder.append("│ Draw  250px grid              P       %8s        │\n".formatted(Controller.config.isDrawPixelGrid()));
-        stringBuilder.append("│ Draw 1 inch grid              I       %8s        │\n".formatted(Controller.config.isDrawPixelGrid()));
-        stringBuilder.append("│ RGB                           G       %8s        │\n".formatted(Controller.config.isDrawRGB()));
-        stringBuilder.append("│ Statistics logging           F11      %8s        │\n".formatted(Controller.config.isEnableStatisticsLogging()));
-        stringBuilder.append("│ Fullscreen                   F12      %8s        │\n".formatted(Controller.config.isFullScreen()));
-        stringBuilder.append("│                                                       │\n");
-        stringBuilder.append("│ Hide/show UI                  H                       │\n");
-        stringBuilder.append("│ Reset settings                S                       │\n");
-        stringBuilder.append("│ Reset stats                   R                       │\n");
-        stringBuilder.append("│ Exit                          ESC                     │\n");
+        stringBuilder.append("┌── STATISTICS   F2 ────────────────────────────────────┐\n");
+        if (config.isShowStatsPanel()) {
+            stringBuilder.append("│ Position             %8d px     %8d px      │\n".formatted(latestUpdate.getPosition().x, latestUpdate.getPosition().y));
+            stringBuilder.append("│                                                       │\n");
+            stringBuilder.append("│ Polling rate         %8d Hz                      │\n".formatted(pollingRate));
+            stringBuilder.append("│ Polling rate MAX     %8d Hz                      │\n".formatted(maxPollingRate));
+            stringBuilder.append("│ Polling rate AVG     %8d Hz                      │\n".formatted(avgPollingRate));
+            stringBuilder.append("│ Polling rate class   %8d Hz                      │\n".formatted(pollingRateClass));
+            stringBuilder.append("│                                                       │\n");
+            stringBuilder.append("│ Longest jump dist.   %8d px     %8.4f inch    │\n".formatted(longestJump, (float) longestJump / config.getDpi()));
+            stringBuilder.append("│ Shortest jump dist.  %8d px     %8.4f inch    │\n".formatted(shortestJump == Integer.MAX_VALUE ? 0 : shortestJump, (float) (shortestJump == Integer.MAX_VALUE ? 0 : shortestJump) / config.getDpi()));
+            stringBuilder.append("│ Movement speed       %8d px/s   %8.4f inch/s  │\n".formatted(lastJump * longestJump, (float) pollingRateClass * lastJump / config.getDpi()));
+            stringBuilder.append("│ Fastest movement     %8d px/s   %8.4f inch/s  │\n".formatted(pollingRateClass * longestJump, (float) pollingRateClass * longestJump / config.getDpi()));
+            stringBuilder.append("│ Acceleration         %8d px/s2  %8.4f g       │\n".formatted(currentAcceleration, ((float) currentAcceleration / config.getDpi()) * 0.025900792));
+            stringBuilder.append("│ Fastest acceleration %8d px/s2  %8.4f g       │\n".formatted(highestAcceleration, ((float) highestAcceleration / config.getDpi() * 0.025900792)));
+            stringBuilder.append("│                                                       │\n");
+            stringBuilder.append("│ LMB-RMB Latency      %8.2f ms                      │\n".formatted(mouseLocator.getRelativeClickLatency()));
+            stringBuilder.append("│ LMB Duration         %8.2f ms                      │\n".formatted(mouseLocator.getClickDuration()));
+            stringBuilder.append("│ LMB Interval         %8.2f ms                      │\n".formatted(mouseLocator.getClickInterval()));
+            stringBuilder.append("│                                                       │\n");
+            stringBuilder.append("│ Graphics FPS         %8d FPS                     │\n".formatted(fps));
+        }
+        stringBuilder.append("└───────────────────────────────────────────────────────┘\n");
+        stringBuilder.append("\n");
+        stringBuilder.append("┌── SETTINGS   F3 ──────────────────────────────────────┐\n");
+        if (config.isShowSettingsPanel()) {
+            stringBuilder.append("│ Pause                       SPACE     %8s        │\n".formatted(mouseLocator.isPaused()));
+            stringBuilder.append("│ Draw trail                    T       %8s        │\n".formatted(config.isDrawTrail()));
+            stringBuilder.append("│ Draw coordinates              C       %8s        │\n".formatted(config.isDrawCoordinates()));
+            stringBuilder.append("│ Polling rate multiplier       M       %8s        │\n".formatted("1/" + config.getPollrateDivisor()));
+            stringBuilder.append("│ DPI                           ↑ ↓     %8s        │\n".formatted(config.getDpi()));
+            stringBuilder.append("│ FPS limit                     F       %8s        │\n".formatted(config.getMaxFPS()));
+            stringBuilder.append("│ Draw  250px grid              P       %8s        │\n".formatted(config.isDrawPixelGrid()));
+            stringBuilder.append("│ Draw 1 inch grid              I       %8s        │\n".formatted(config.isDrawInchGrid()));
+            stringBuilder.append("│                                                       │\n");
+            stringBuilder.append("│ Cycle UI size                 U       %8s        │\n".formatted(config.getUIMultiplier()));
+            stringBuilder.append("│ Dark mode                     D       %8s        │\n".formatted(config.isDarkMode()));
+            stringBuilder.append("│ RGB                           G       %8s        │\n".formatted(config.isDrawRGB()));
+            stringBuilder.append("│ Write poll data in file      F11      %8s        │\n".formatted(config.isEnableStatisticsLogging()));
+            stringBuilder.append("│ Fullscreen                   F12      %8s        │\n".formatted(config.isFullScreen()));
+            stringBuilder.append("│                                                       │\n");
+            stringBuilder.append("│ Hide/show UI                  H                       │\n");
+            stringBuilder.append("│ Reset settings               DEL                      │\n");
+            stringBuilder.append("│ Reset stats                   R                       │\n");
+            stringBuilder.append("│ Exit                          ESC                     │\n");
+        }
         stringBuilder.append("└───────────────────────────────────────────────────────┘\n");
         stringBuilder.append("\nRemember to turn off mouse acceleration/precision enhancements");
         stringBuilder.append("\n");
-        if (stationary) stringBuilder.append("\nStationary\n");
 
-        for (Integer integer : buttonsPressed) {
+        for (Integer integer : mouseLocator.buttonsPressed) {
             stringBuilder.append("\nButton %d pressed".formatted(integer));
         }
 
-        if (Controller.config.isShowUI()) {
-            printText(g2d, 20, 30, textColor, stringBuilder.toString());
-        } else {
-            printText(g2d, 20, 30, textColor, "Hide/show UI   H");
+        printText(g2d, 20, 30, config.isDarkMode() ? darkModeTextColor : textColor, stringBuilder.toString());
+
+        stringBuilder = new StringBuilder();
+        int lineCounter = 0;
+        //TODO horizontal placement of right side when changing ui size
+        stringBuilder.append("┌── DEBUG   F4 ────────────────────────────────┐\n");
+        if (config.isShowDebugPanel()) {
+            for (String debugLog : debugLogs.toArray(new String[0])) {
+                if (config.isShowPollingPanel() && lineCounter >= (this.getHeight() * 0.25 / lineHeight) - 6) break;
+                else if (lineCounter >= (this.getHeight() / lineHeight) - 6) break;
+                while (debugLog.length() > 44) {
+                    stringBuilder.append("│ %-44s │\n".formatted(debugLog.substring(0, 44)));
+                    lineCounter++;
+                    debugLog = debugLog.substring(44);
+                }
+                stringBuilder.append("│ %-44s │\n".formatted(debugLog));
+                lineCounter++;
+            }
         }
+
+        stringBuilder.append("└──────────────────────────────────────────────┘\n");
+        stringBuilder.append("\n");
+        stringBuilder.append("┌── STATS   F5 ────────────────────────────────┐\n");
+        if (config.isShowPollingPanel()) {
+
+            for (String statsLog : statsLogs.toArray(new String[0])) {
+                stringBuilder.append("│ %-44s │\n".formatted(statsLog));
+            }
+        }
+
+        stringBuilder.append("└──────────────────────────────────────────────┘\n");
+        printText(g2d, this.getWidth() - 360, 30, config.isDarkMode() ? darkModeTextColor : textColor, stringBuilder.toString());
 
     }
 
     private void printText(Graphics2D g2d, int x, int y, Color color, String string) {
-        int lineHeight = (int) (4.5 * Controller.config.getUIMultiplier());
+        lineHeight = (int) (4.5 * config.getUIMultiplier());
         String line = null;
         AttributedString attributedString = null;
         g2d.setColor(color);
@@ -282,9 +326,11 @@ public class MainPanel extends JPanel implements KeyListener {
             attributedString = new AttributedString(line);
 
             if (line.trim().length() != 0) {
-                attributedString.addAttribute(TextAttribute.BACKGROUND, new Color(127, 127, 127, 255));
-                attributedString.addAttribute(TextAttribute.FONT, new Font("Courier New", Font.PLAIN, 4 * Controller.config.getUIMultiplier()));
-                if (Controller.config.isDrawRGB())
+                if (config.isDarkMode())
+                    attributedString.addAttribute(TextAttribute.BACKGROUND, new Color(110, 80, 100, 120));
+                else attributedString.addAttribute(TextAttribute.BACKGROUND, new Color(210, 180, 200, 120));
+                attributedString.addAttribute(TextAttribute.FONT, new Font("Courier New", Font.PLAIN, 4 * config.getUIMultiplier()));
+                if (config.isDrawRGB())
                     attributedString.addAttribute(TextAttribute.FOREGROUND, new Color(Color.HSBtoRGB((float) i / string.split("\n").length + rgbCycle / 100f, 1, 1)));
             }
 
@@ -293,11 +339,17 @@ public class MainPanel extends JPanel implements KeyListener {
     }
 
     private void paintCursor(Graphics2D g2d) {
-        g2d.setColor(buttonsPressed.isEmpty()?cursorColor:cursorButtonPressedColor);
-        g2d.fillRect(scalePosition(position).x, scalePosition(position).y - Controller.config.getUIMultiplier(), 1, Controller.config.getUIMultiplier() * 2 + 1);
-        g2d.fillRect(scalePosition(position).x - Controller.config.getUIMultiplier(), scalePosition(position).y, Controller.config.getUIMultiplier() * 2 + 1, 1);
+        g2d.setColor(mouseLocator.buttonsPressed.isEmpty() ? cursorColor : cursorButtonPressedColor);
+        // vertical line
+        g2d.fillRect(scalePosition(latestUpdate.getPosition()).x, scalePosition(latestUpdate.getPosition()).y - config.getUIMultiplier() * 2, 1, config.getUIMultiplier() * 4 + 1);
+        // horizontal line
+        g2d.fillRect(scalePosition(latestUpdate.getPosition()).x - config.getUIMultiplier() * 2, scalePosition(latestUpdate.getPosition()).y, config.getUIMultiplier() * 4 + 1, 1);
+        // center pixel
         g2d.setColor(Color.YELLOW);
-        g2d.fillRect(scalePosition(position).x, scalePosition(position).y, 1, 1);
+        g2d.fillRect(scalePosition(latestUpdate.getPosition()).x, scalePosition(latestUpdate.getPosition()).y, 1, 1);
+        if (stationary) {
+            g2d.drawOval(scalePosition(latestUpdate.getPosition()).x - config.getUIMultiplier() * 5, scalePosition(latestUpdate.getPosition()).y - config.getUIMultiplier() * 5, config.getUIMultiplier() * 10, config.getUIMultiplier() * 10);
+        }
     }
 
     private void paintPixelGrid(Graphics2D graphics2D) {
@@ -313,31 +365,43 @@ public class MainPanel extends JPanel implements KeyListener {
 
     private void paintInchGrid(Graphics2D graphics2D) {
         graphics2D.setColor(inchGridColor);
-        for (int i = 0; i < this.getWidth(); i += Controller.config.getDpi() * (this.getWidth() / (float) screenSize.width)) {
+        for (int i = 0; i < this.getWidth(); i += config.getDpi() * (this.getWidth() / (float) screenSize.width)) {
             graphics2D.drawLine(i, 0, i, this.getHeight());
         }
 
-        for (int i = 0; i < this.getHeight(); i += Controller.config.getDpi() * (this.getHeight() / (float) screenSize.height)) {
+        for (int i = 0; i < this.getHeight(); i += config.getDpi() * (this.getHeight() / (float) screenSize.height)) {
             graphics2D.drawLine(0, i, this.getWidth(), i);
         }
     }
 
     private void paintPath(Graphics2D graphics2D) {
         float dist = 0, colorMultiplier, distx = 0, disty = 0;
-        for (int i = 1; i < prevPositions.size()-1; i++) {
-            distx = prevPositions.get(i - 1).x - prevPositions.get(i).x;
-            disty = prevPositions.get(i - 1).y - prevPositions.get(i).y;
-            dist = (float) Math.sqrt(Math.pow(distx,2) + Math.pow(disty, 2));
-            colorMultiplier = (dist> longestJump)?1:dist/(float) longestJump;
-            graphics2D.setColor(Color.decode("#%02X%02X00".formatted((int) (255*colorMultiplier), (int) (255*(1-colorMultiplier)))));
-            graphics2D.drawLine(scalePosition(prevPositions.get(i - 1)).x, scalePosition(prevPositions.get(i - 1)).y, scalePosition(prevPositions.get(i)).x, scalePosition(prevPositions.get(i)).y);
+
+        MouseUpdate currentUpdate = latestUpdate;
+
+        for (int i = 0; i < COORDINATE_BACKLOG_LENGTH && currentUpdate != null && currentUpdate.getPrevious() != null; i++) {
+            distx = currentUpdate.getPrevious().getPosition().x - currentUpdate.getPosition().x;
+            disty = currentUpdate.getPrevious().getPosition().y - currentUpdate.getPosition().y;
+            dist = (float) Math.sqrt(Math.pow(distx, 2) + Math.pow(disty, 2));
+            colorMultiplier = (dist > longestJump) ? 1 : dist / (float) longestJump;
+            graphics2D.setColor(Color.decode("#%02X%02X00".formatted((int) (255 * colorMultiplier), (int) (255 * (1 - colorMultiplier)))));
+            graphics2D.drawLine(scalePosition(currentUpdate.getPrevious().getPosition()).x, scalePosition(currentUpdate.getPrevious().getPosition()).y, scalePosition(currentUpdate.getPosition()).x, scalePosition(currentUpdate.getPosition()).y);
+            currentUpdate = currentUpdate.getPrevious();
         }
     }
 
     private void paintCoordinates(Graphics2D graphics2D) {
         graphics2D.setColor(coordinateColor);
-        for (int i = 1; i < prevPositions.size(); i++) {
-            graphics2D.drawOval(scalePosition(prevPositions.get(i)).x - 1, scalePosition(prevPositions.get(i)).y - 1, 1, 1);
+        MouseUpdate currentUpdate = latestUpdate;
+        for (int i = 0; i < COORDINATE_BACKLOG_LENGTH && currentUpdate != null; i++) {
+            if (currentUpdate.getButtonsPressed().length == 0) {
+                graphics2D.setColor(coordinateColor);
+                graphics2D.drawOval(scalePosition(currentUpdate.getPosition()).x - 1, scalePosition(currentUpdate.getPosition()).y - 1, 1, 1);
+            } else {
+                graphics2D.setColor(coordinateButtonPressedColor);
+                graphics2D.drawOval(scalePosition(currentUpdate.getPosition()).x - 1, scalePosition(currentUpdate.getPosition()).y - 1, 2, 2);
+            }
+            currentUpdate = currentUpdate.getPrevious();
         }
     }
 
@@ -348,6 +412,7 @@ public class MainPanel extends JPanel implements KeyListener {
             graphics2D.drawLine(i, getHeight() - 5, i + 5, getHeight() - 10);
         }
     }
+
 
     @Override
     public void keyTyped(KeyEvent e) {
@@ -363,69 +428,103 @@ public class MainPanel extends JPanel implements KeyListener {
     public void keyReleased(KeyEvent e) {
         switch (e.getKeyCode()) {
             case KeyEvent.VK_SPACE:
-                Controller.mouseLocator.setPaused(!Controller.mouseLocator.isPaused());
+                mouseLocator.setPaused(!mouseLocator.isPaused());
+                Log.info("paused: %s".formatted(mouseLocator.isPaused()));
                 break;
             case KeyEvent.VK_ESCAPE:
                 Controller.exit();
                 break;
             case KeyEvent.VK_M:
-                if (Controller.config.getPollrateDivisor() == 16) Controller.config.setPollrateDivisor(1);
-                else Controller.config.setPollrateDivisor(Controller.config.getPollrateDivisor() * 2);
+                if (config.getPollrateDivisor() == 16) config.setPollrateDivisor(1);
+                else config.setPollrateDivisor(config.getPollrateDivisor() * 2);
+                Log.info("changed setting - pollrate divisor: %s".formatted(config.getPollrateDivisor()));
                 break;
             case KeyEvent.VK_F:
-                if (Controller.config.getMaxFPS() == 480) Controller.config.setMaxFPS(30);
-                else Controller.config.setMaxFPS(Controller.config.getMaxFPS() * 2);
+                if (config.getMaxFPS() == 480) config.setMaxFPS(30);
+                else config.setMaxFPS(config.getMaxFPS() * 2);
+                Log.info("changed setting - max graphics fps: %s".formatted(config.getMaxFPS()));
                 break;
             case KeyEvent.VK_D:
-                Controller.config.setDarkMode(!Controller.config.isDarkMode());
+                config.setDarkMode(!config.isDarkMode());
+                Log.info("changed setting - dark mode enabled: %s".formatted(config.isDarkMode()));
                 break;
             case KeyEvent.VK_C:
-                Controller.config.setDrawCoordinates(!Controller.config.isDrawCoordinates());
+                config.setDrawCoordinates(!config.isDrawCoordinates());
+                Log.info("changed setting - draw coordinates: %s".formatted(config.isDrawCoordinates()));
                 break;
             case KeyEvent.VK_T:
-                Controller.config.setDrawTrail(!Controller.config.isDrawTrail());
+                config.setDrawTrail(!config.isDrawTrail());
+                Log.info("changed setting - draw trail: %s".formatted(config.isDrawTrail()));
                 break;
             case KeyEvent.VK_U:
-                if (Controller.config.getUIMultiplier() == 8) Controller.config.setUIMultiplier(2);
-                else Controller.config.setUIMultiplier(Controller.config.getUIMultiplier() + 1);
+                if (config.getUIMultiplier() == 8) config.setUIMultiplier(2);
+                else config.setUIMultiplier(config.getUIMultiplier() + 1);
+                Log.info("changed setting - ui size multiplier: %s".formatted(config.getUIMultiplier()));
                 break;
-            case KeyEvent.VK_S:
-                Controller.config.init();
+            case KeyEvent.VK_DELETE:
+                config.init();
+                Log.info("config reset");
                 break;
             case KeyEvent.VK_R:
                 resetStats();
+                Log.info("session statistics reset");
                 break;
             case KeyEvent.VK_I:
-                Controller.config.setDrawInchGrid(!Controller.config.isDrawInchGrid());
+                config.setDrawInchGrid(!config.isDrawInchGrid());
+                Log.info("changed setting - draw 1 inch grid: %s".formatted(config.isDrawInchGrid()));
                 break;
             case KeyEvent.VK_P:
-                Controller.config.setDrawPixelGrid(!Controller.config.isDrawPixelGrid());
+                config.setDrawPixelGrid(!config.isDrawPixelGrid());
+                Log.info("changed setting - draw 250 pixel grid: %s".formatted(config.isDrawPixelGrid()));
                 break;
             case KeyEvent.VK_UP:
-                if (Controller.config.getDpi() == 32000) Controller.config.setDpi(100);
-                else Controller.config.setDpi(Controller.config.getDpi() + 100);
+                if (config.getDpi() == 32000) config.setDpi(100);
+                else config.setDpi(config.getDpi() + 100);
+                Log.info("changed setting - dpi: %s".formatted(config.getDpi()));
                 break;
             case KeyEvent.VK_DOWN:
-                if (Controller.config.getDpi() == 100) Controller.config.setDpi(32000);
-                else Controller.config.setDpi(Controller.config.getDpi() - 100);
-                break;
-            case KeyEvent.VK_H:
-                Controller.config.setShowUI(!Controller.config.isShowUI());
+                if (config.getDpi() == 100) config.setDpi(32000);
+                else config.setDpi(config.getDpi() - 100);
+                Log.info("changed setting - dpi: %s".formatted(config.getDpi()));
                 break;
             case KeyEvent.VK_G:
-                Controller.config.setDrawRGB(!Controller.config.isDrawRGB());
+                config.setDrawRGB(!config.isDrawRGB());
+                Log.info("changed setting - RGB: %s".formatted(config.isDrawRGB()));
+                break;
+            case KeyEvent.VK_F1:
+                config.setShowTitlePanel(!config.isShowTitlePanel());
+                Log.info("changed setting - show title panel: %s".formatted(config.isShowTitlePanel()));
+                break;
+            case KeyEvent.VK_F2:
+                config.setShowStatsPanel(!config.isShowStatsPanel());
+                Log.info("changed setting - show statistics panel: %s".formatted(config.isShowStatsPanel()));
+                break;
+            case KeyEvent.VK_F3:
+                config.setShowSettingsPanel(!config.isShowSettingsPanel());
+                Log.info("changed setting - show settings panel: %s".formatted(config.isShowSettingsPanel()));
+                break;
+            case KeyEvent.VK_F4:
+                config.setShowDebugPanel(!config.isShowDebugPanel());
+                Log.info("changed setting - show debug panel: %s".formatted(config.isShowDebugPanel()));
+                break;
+            case KeyEvent.VK_F5:
+                config.setShowPollingPanel(!config.isShowPollingPanel());
+                Log.info("changed setting - show poll data panel: %s".formatted(config.isShowPollingPanel()));
                 break;
             case KeyEvent.VK_F11:
-                Controller.config.setEnableStatisticsLogging(!Controller.config.isEnableStatisticsLogging());
+                config.setEnableStatisticsLogging(!config.isEnableStatisticsLogging());
+                Log.info("changed setting - save poll data on disk: %s".formatted(config.isEnableStatisticsLogging()));
                 break;
             case KeyEvent.VK_F12:
-                Controller.config.setFullScreen(!Controller.config.isFullScreen());
+                config.setFullScreen(!config.isFullScreen());
                 Controller.loadFrame();
+                Log.info("changed setting - fullscreen: %s".formatted(config.isFullScreen()));
                 break;
         }
     }
 
     private void resetStats() {
+        latestUpdate.setPrevious(null);
         avgPollingRate = 0;
         shortestJump = Integer.MAX_VALUE;
         maxPollingRate = 0;
@@ -435,7 +534,7 @@ public class MainPanel extends JPanel implements KeyListener {
     }
 
     private Point scalePosition(Point position) {
-        return new Point((int) ( position.x * (this.getWidth() / (float) screenSize.width)), (int) (position.y * ( this.getHeight()/ (float)screenSize.height)));
+        return new Point((int) (position.x * (this.getWidth() / (float) screenSize.width)), (int) (position.y * (this.getHeight() / (float) screenSize.height)));
     }
 
 }
